@@ -167,8 +167,8 @@ class MMPP_Admin {
 
     echo '<table class="form-table">';
 
-    self::row_text('Name', 'name', $data['name'], 'Human friendly name, for example Opening day free pint');
-    self::row_text('Slug', 'slug', $data['slug'], 'Lowercase, no spaces. Used in shortcodes, for example opening-day');
+    self::row_text('Name', 'name', $data['name'], 'E.g. Opening day free pint');
+    self::row_text('Slug', 'slug', $data['slug'], 'Lowercase, no spaces. E.g opening-day');
     self::row_text('Kadence Form ID (optional)', 'form_id', $data['form_id'], 'For your tracking only. Webhook URL is what matters.');
 
     echo '<tr><th scope="row"><label for="claim_page_id">Claim page</label></th><td>';
