@@ -37,6 +37,10 @@ class MMPP_Rest {
       return new WP_REST_Response(['ok' => false, 'message' => 'Campaign not found'], 404);
     }
 
+    if (!MMPP_DB::campaign_is_active($campaign)) {
+      return new WP_REST_Response(['ok' => false, 'state' => 'inactive', 'message' => 'Campaign not active'], 403);
+    }
+
     $data = self::get_body_params($req);
     $field = $campaign->email_field_name ?: 'email';
 
@@ -67,7 +71,7 @@ class MMPP_Rest {
 
   private static function send_claim_email($campaign, $entry) {
     $base = MMPP_DB::get_claim_page_url($campaign);
-    $claim = add_query_arg([
+    $claim_url = add_query_arg([
       'mmpp' => $campaign->slug,
       't' => $entry->token,
     ], $base);
@@ -76,12 +80,29 @@ class MMPP_Rest {
 
     $body_tpl = $campaign->email_body;
     if (!$body_tpl) {
-      $body_tpl = "Thanks for signing up.\n\nUse this link to claim your free pint:\n{claim_link}\n";
+      $body_tpl = "Thanks for signing up.
+
+Use this link to claim your free pint:
+{claim_link}
+";
     }
 
-    $body = str_replace('{claim_link}', esc_url_raw($claim), $body_tpl);
+    $is_html = isset($campaign->email_is_html) ? ((int) $campaign->email_is_html === 1) : true;
+    $btn_text = !empty($campaign->email_button_text) ? (string) $campaign->email_button_text : 'Open my free pint pass';
 
-    $headers = [];
+    if ($is_html) {
+      $button = '<a href="' . esc_url($claim_url) . '" style="display:inline-block;padding:12px 18px;background:#0b3d2e;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:700;">' . esc_html($btn_text) . '</a>';
+      $fallback = '<p style="margin-top:12px;font-size:12px;color:#666;">If the button does not work, open this link: <a href="' . esc_url($claim_url) . '">' . esc_html($claim_url) . '</a></p>';
+      $body = str_replace('{claim_link}', $button . $fallback, $body_tpl);
+      $body = str_replace('{claim_url}', esc_url($claim_url), $body);
+
+      $headers = ['Content-Type: text/html; charset=UTF-8'];
+    } else {
+      $body = str_replace('{claim_link}', esc_url_raw($claim_url), $body_tpl);
+      $body = str_replace('{claim_url}', esc_url_raw($claim_url), $body);
+      $headers = [];
+    }
+
     if (!empty($campaign->email_from_email)) {
       $from_name = $campaign->email_from_name ? $campaign->email_from_name : wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES);
       $headers[] = 'From: ' . $from_name . ' <' . $campaign->email_from_email . '>';
@@ -91,6 +112,10 @@ class MMPP_Rest {
   }
 
   public static function redeem(WP_REST_Request $req) {
+    if (!MMPP_DB::campaign_is_active($campaign)) {
+      return new WP_REST_Response(['ok' => false, 'state' => 'inactive', 'message' => 'Campaign not active'], 403);
+    }
+
     $data = self::get_body_params($req);
 
     $token = sanitize_text_field($data['token'] ?? '');
@@ -108,6 +133,10 @@ class MMPP_Rest {
     $campaign = MMPP_DB::get_campaign((int) $entry->campaign_id);
     if (!$campaign) {
       return new WP_REST_Response(['ok' => false, 'message' => 'Campaign not found'], 404);
+    }
+
+    if (!MMPP_DB::campaign_is_active($campaign)) {
+      return new WP_REST_Response(['ok' => false, 'state' => 'inactive', 'message' => 'Campaign not active'], 403);
     }
 
     if (!empty($campaign->staff_pin)) {

@@ -5,9 +5,9 @@ class MMPP_DB {
   public static function init() {
     // Lightweight schema migrations.
     $ver = (int) get_option('mmpp_schema_ver', 0);
-    if ($ver < 101) {
+    if ($ver < 102) {
       self::activate();
-      update_option('mmpp_schema_ver', 101);
+      update_option('mmpp_schema_ver', 102);
     }
   }
 
@@ -26,10 +26,14 @@ class MMPP_DB {
       webhook_key VARCHAR(64) NOT NULL,
       form_id VARCHAR(190) NULL,
       claim_page_id BIGINT(20) UNSIGNED NULL,
+      start_at DATETIME NULL,
+      end_at DATETIME NULL,
       email_field_name VARCHAR(190) NOT NULL DEFAULT 'email',
       email_subject VARCHAR(190) NOT NULL DEFAULT 'Your free pint claim link',
       email_from_name VARCHAR(190) NULL,
       email_from_email VARCHAR(190) NULL,
+      email_is_html TINYINT(1) NOT NULL DEFAULT 1,
+      email_button_text VARCHAR(190) NOT NULL DEFAULT 'Open my free pint pass',
       email_body LONGTEXT NULL,
       staff_pin VARCHAR(32) NULL,
       qr_enabled TINYINT(1) NOT NULL DEFAULT 0,
@@ -108,6 +112,32 @@ class MMPP_DB {
     global $wpdb;
     $t = self::table_campaigns();
     return $wpdb->get_results("SELECT * FROM {$t} ORDER BY created_at DESC");
+  }
+
+
+  public static function campaign_is_active($campaign, $ts = null) {
+    if (!$campaign) return false;
+    if ($ts === null) $ts = time();
+
+    $start = !empty($campaign->start_at) ? strtotime($campaign->start_at . ' GMT') : null;
+    $end   = !empty($campaign->end_at) ? strtotime($campaign->end_at . ' GMT') : null;
+
+    if ($start && $ts < $start) return false;
+    if ($end && $ts > $end) return false;
+    return true;
+  }
+
+  public static function campaign_state($campaign, $ts = null) {
+    if (!$campaign) return 'unknown';
+    if ($ts === null) $ts = time();
+
+    $start = !empty($campaign->start_at) ? strtotime($campaign->start_at . ' GMT') : null;
+    $end   = !empty($campaign->end_at) ? strtotime($campaign->end_at . ' GMT') : null;
+
+    if ($start && $ts < $start) return 'scheduled';
+    if ($end && $ts > $end) return 'ended';
+    if ($start || $end) return 'active';
+    return 'always';
   }
 
   public static function get_claim_page_url($campaign) {
@@ -275,6 +305,60 @@ class MMPP_DB {
       'pending' => $pending,
       'by_day' => $by_day,
     ];
+  }
+
+
+  public static function count_entries($campaign_id, $search = '') {
+    global $wpdb;
+    $t = self::table_entries();
+    $campaign_id = (int) $campaign_id;
+
+    if ($search) {
+      $like = '%' . $wpdb->esc_like(self::normalize_email($search)) . '%';
+      return (int) $wpdb->get_var($wpdb->prepare(
+        "SELECT COUNT(*) FROM {$t} WHERE campaign_id=%d AND email LIKE %s",
+        $campaign_id,
+        $like
+      ));
+    }
+
+    return (int) $wpdb->get_var($wpdb->prepare(
+      "SELECT COUNT(*) FROM {$t} WHERE campaign_id=%d",
+      $campaign_id
+    ));
+  }
+
+  public static function list_entries($campaign_id, $search = '', $page = 1, $per_page = 50) {
+    global $wpdb;
+    $t = self::table_entries();
+    $campaign_id = (int) $campaign_id;
+    $page = max(1, (int) $page);
+    $per_page = max(1, min(200, (int) $per_page));
+    $offset = ($page - 1) * $per_page;
+
+    if ($search) {
+      $like = '%' . $wpdb->esc_like(self::normalize_email($search)) . '%';
+      return $wpdb->get_results($wpdb->prepare(
+        "SELECT * FROM {$t}
+         WHERE campaign_id=%d AND email LIKE %s
+         ORDER BY signup_at DESC
+         LIMIT %d OFFSET %d",
+        $campaign_id,
+        $like,
+        $per_page,
+        $offset
+      ));
+    }
+
+    return $wpdb->get_results($wpdb->prepare(
+      "SELECT * FROM {$t}
+       WHERE campaign_id=%d
+       ORDER BY signup_at DESC
+       LIMIT %d OFFSET %d",
+      $campaign_id,
+      $per_page,
+      $offset
+    ));
   }
 
   public static function export_entries_csv($campaign_id) {

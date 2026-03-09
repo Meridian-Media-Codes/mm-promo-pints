@@ -22,12 +22,39 @@ class MMPP_Admin {
     add_submenu_page('mmpp', 'Campaigns', 'Campaigns', 'manage_options', 'mmpp', [__CLASS__, 'page_campaigns']);
     add_submenu_page('mmpp', 'Add campaign', 'Add campaign', 'manage_options', 'mmpp-add', [__CLASS__, 'page_campaign_edit']);
     add_submenu_page('mmpp', 'Analytics', 'Analytics', 'manage_options', 'mmpp-analytics', [__CLASS__, 'page_analytics']);
+    add_submenu_page('mmpp', 'Entries', 'Entries', 'manage_options', 'mmpp-entries', [__CLASS__, 'page_entries']);
   }
 
   private static function admin_url($slug, $args = []) {
     $url = admin_url('admin.php?page=' . $slug);
     if (!empty($args)) $url = add_query_arg($args, $url);
     return $url;
+  }
+
+  private static function to_local_dt($gmt_sql) {
+    $gmt_sql = trim((string) $gmt_sql);
+    if (!$gmt_sql) return '';
+    try {
+      $dt = new DateTimeImmutable($gmt_sql, new DateTimeZone('UTC'));
+      $local = $dt->setTimezone(wp_timezone());
+      return $local->format('Y-m-d\TH:i');
+    } catch (Exception $e) {
+      return '';
+    }
+  }
+
+  private static function from_local_dt($local_dt) {
+    $local_dt = trim((string) $local_dt);
+    if (!$local_dt) return '';
+    try {
+      $tz = wp_timezone();
+      // datetime-local uses "YYYY-MM-DDTHH:MM"
+      $dt = new DateTimeImmutable($local_dt, $tz);
+      $gmt = $dt->setTimezone(new DateTimeZone('UTC'));
+      return $gmt->format('Y-m-d H:i:s');
+    } catch (Exception $e) {
+      return '';
+    }
   }
 
   public static function page_campaigns() {
@@ -48,7 +75,7 @@ class MMPP_Admin {
 
     echo '<table class="widefat striped">';
     echo '<thead><tr>';
-    echo '<th>Name</th><th>Slug</th><th>Form ID</th><th>Webhook URL</th><th>QR</th><th>Created</th><th></th>';
+    echo '<th>Name</th><th>Slug</th><th>Status</th><th>Form ID</th><th>Webhook URL</th><th>QR</th><th>Created</th><th></th>';
     echo '</tr></thead><tbody>';
 
     foreach ($campaigns as $c) {
@@ -59,13 +86,21 @@ class MMPP_Admin {
       echo '<tr>';
       echo '<td>' . esc_html($c->name) . '</td>';
       echo '<td><code>' . esc_html($c->slug) . '</code></td>';
+      $state = MMPP_DB::campaign_state($c);
+      $badge = $state;
+      if ($state === 'active') $badge = 'Active';
+      elseif ($state === 'scheduled') $badge = 'Scheduled';
+      elseif ($state === 'ended') $badge = 'Ended';
+      elseif ($state === 'always') $badge = 'Always on';
+      echo '<td><span class="mmpp-badge mmpp-badge-' . esc_attr($state) . '">' . esc_html($badge) . '</span></td>';
       echo '<td>' . esc_html($c->form_id ?: '-') . '</td>';
       echo '<td><code>' . esc_html($webhook) . '</code></td>';
       echo '<td>' . ($c->qr_enabled ? 'On' : 'Off') . '</td>';
       echo '<td>' . esc_html($c->created_at) . ' (GMT)</td>';
       echo '<td style="white-space:nowrap">'
         . '<a class="button" href="' . esc_url($edit) . '">Edit</a> '
-        . '<a class="button" href="' . esc_url($analytics) . '">Analytics</a>'
+        . '<a class="button" href="' . esc_url($analytics) . '">Analytics</a> '
+        . '<a class="button" href="' . esc_url(self::admin_url('mmpp-entries', ['id' => (int) $c->id])) . '">Entries</a>'
         . '</td>';
       echo '</tr>';
     }
@@ -101,10 +136,14 @@ class MMPP_Admin {
       'slug' => '',
       'form_id' => '',
       'claim_page_id' => 0,
+      'start_at' => '',
+      'end_at' => '',
       'email_field_name' => 'email',
       'email_subject' => 'Your free pint claim link',
       'email_from_name' => '',
       'email_from_email' => '',
+      'email_is_html' => '1',
+      'email_button_text' => 'Open my free pint pass',
       'email_body' => "Thanks for signing up.\n\nUse this link to claim your free pint:\n{claim_link}\n\nIf you are at the bar, show this page to staff.",
       'staff_pin' => '',
       'qr_enabled' => 0,
@@ -143,10 +182,27 @@ class MMPP_Admin {
     echo '<p class="description">Recommended. Pick the page that contains <code>[mmpp_claim]</code>. This fixes email links pointing at the homepage.</p>';
     echo '</td></tr>';
 
+echo '<tr><th scope="row"><label for="start_at">Start date (optional)</label></th><td>';
+    echo '<input type="datetime-local" name="start_at" id="start_at" value="' . esc_attr(self::to_local_dt($data['start_at'])) . '">';
+    echo '<p class="description">If set, signups and redemptions only work from this time.</p>';
+    echo '</td></tr>';
+
+    echo '<tr><th scope="row"><label for="end_at">End date (optional)</label></th><td>';
+    echo '<input type="datetime-local" name="end_at" id="end_at" value="' . esc_attr(self::to_local_dt($data['end_at'])) . '">';
+    echo '<p class="description">If set, signups and redemptions stop after this time.</p>';
+    echo '</td></tr>';
+
     self::row_text('Email field name', 'email_field_name', $data['email_field_name'], 'Kadence webhook field name that contains the email, default is email.');
     self::row_text('Email subject', 'email_subject', $data['email_subject'], 'Subject for the claim email.');
     self::row_text('Email from name (optional)', 'email_from_name', $data['email_from_name'], 'Leave blank to use site defaults.');
     self::row_text('Email from email (optional)', 'email_from_email', $data['email_from_email'], 'Leave blank to use site defaults.');
+
+    echo '<tr><th scope="row">Email format</th><td>';
+    echo '<label><input type="checkbox" name="email_is_html" value="1" ' . checked(1, (int) $data['email_is_html'], false) . '> Send as HTML (recommended)</label>';
+    echo '<p class="description">If enabled, the claim link is rendered as a button in most email clients.</p>';
+    echo '</td></tr>';
+
+    self::row_text('Button text', 'email_button_text', $data['email_button_text'], 'Text shown on the claim button in the email.');
 
     echo '<tr><th scope="row"><label for="email_body">Email body</label></th><td>';
     echo '<textarea class="large-text" rows="8" name="email_body" id="email_body">' . esc_textarea($data['email_body']) . '</textarea>';
@@ -204,11 +260,15 @@ class MMPP_Admin {
     $slug = sanitize_title($_POST['slug'] ?? '');
     $form_id = sanitize_text_field($_POST['form_id'] ?? '');
     $claim_page_id = isset($_POST['claim_page_id']) ? (int) $_POST['claim_page_id'] : 0;
+    $start_at = self::from_local_dt($_POST['start_at'] ?? '');
+    $end_at = self::from_local_dt($_POST['end_at'] ?? '');
     $email_field_name = sanitize_text_field($_POST['email_field_name'] ?? 'email');
 
     $email_subject = sanitize_text_field($_POST['email_subject'] ?? 'Your free pint claim link');
     $email_from_name = sanitize_text_field($_POST['email_from_name'] ?? '');
     $email_from_email = sanitize_email($_POST['email_from_email'] ?? '');
+    $email_is_html = !empty($_POST['email_is_html']) ? 1 : 0;
+    $email_button_text = sanitize_text_field($_POST['email_button_text'] ?? 'Open my free pint pass');
     $email_body = wp_kses_post($_POST['email_body'] ?? '');
 
     $staff_pin = sanitize_text_field($_POST['staff_pin'] ?? '');
@@ -224,10 +284,14 @@ class MMPP_Admin {
       'slug' => $slug,
       'form_id' => $form_id ?: null,
       'claim_page_id' => $claim_page_id > 0 ? $claim_page_id : null,
+      'start_at' => $start_at ?: null,
+      'end_at' => $end_at ?: null,
       'email_field_name' => $email_field_name ?: 'email',
       'email_subject' => $email_subject,
       'email_from_name' => $email_from_name ?: null,
       'email_from_email' => $email_from_email ?: null,
+      'email_is_html' => (int) $email_is_html,
+      'email_button_text' => $email_button_text ?: 'Open my free pint pass',
       'email_body' => $email_body ?: null,
       'staff_pin' => $staff_pin ?: null,
       'qr_enabled' => $qr_enabled,
@@ -247,6 +311,90 @@ class MMPP_Admin {
 
     wp_redirect(self::admin_url('mmpp-add', ['id' => $new_id, 'created' => 1]));
     exit;
+  }
+
+
+  public static function page_entries() {
+    if (!current_user_can('manage_options')) return;
+
+    $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+    if (!$id) {
+      $campaigns = MMPP_DB::list_campaigns();
+      echo '<div class="wrap mmpp"><h1>Entries</h1>';
+      if (!$campaigns) {
+        echo '<p>No campaigns yet.</p></div>';
+        return;
+      }
+      echo '<p>Select a campaign:</p><ul>';
+      foreach ($campaigns as $c) {
+        echo '<li><a href="' . esc_url(self::admin_url('mmpp-entries', ['id' => (int) $c->id])) . '">' . esc_html($c->name) . '</a></li>';
+      }
+      echo '</ul></div>';
+      return;
+    }
+
+    $c = MMPP_DB::get_campaign($id);
+    if (!$c) {
+      echo '<div class="wrap mmpp"><h1>Entries</h1><p>Campaign not found.</p></div>';
+      return;
+    }
+
+    $search = sanitize_text_field($_GET['s'] ?? '');
+    $paged = isset($_GET['paged']) ? max(1, (int) $_GET['paged']) : 1;
+    $per_page = 50;
+
+    $total = MMPP_DB::count_entries($id, $search);
+    $rows = MMPP_DB::list_entries($id, $search, $paged, $per_page);
+
+    $pages = max(1, (int) ceil($total / $per_page));
+
+    $export = admin_url('admin-post.php?action=mmpp_export_csv&id=' . (int) $id . '&_wpnonce=' . wp_create_nonce('mmpp_export_csv'));
+
+    echo '<div class="wrap mmpp">';
+    echo '<h1>Entries: ' . esc_html($c->name) . '</h1>';
+
+    echo '<form method="get" style="margin:12px 0;">';
+    echo '<input type="hidden" name="page" value="mmpp-entries">';
+    echo '<input type="hidden" name="id" value="' . (int) $id . '">';
+    echo '<input type="search" name="s" value="' . esc_attr($search) . '" placeholder="Search email" style="min-width:280px;"> ';
+    echo '<button class="button">Search</button> ';
+    echo '<a class="button" href="' . esc_url($export) . '">Export CSV</a>';
+    echo '</form>';
+
+    echo '<table class="widefat striped">';
+    echo '<thead><tr>';
+    echo '<th>Email</th><th>Redeemed</th><th>Signup (GMT)</th><th>Redeemed at (GMT)</th><th>Redeemed IP</th>';
+    echo '</tr></thead><tbody>';
+
+    if (!$rows) {
+      echo '<tr><td colspan="5">No entries found.</td></tr>';
+    } else {
+      foreach ($rows as $r) {
+        $redeemed = ((int) $r->status === 0);
+        echo '<tr>';
+        echo '<td><code>' . esc_html($r->email) . '</code></td>';
+        echo '<td>' . ($redeemed ? '<span class="mmpp-check">✓</span>' : '—') . '</td>';
+        echo '<td>' . esc_html($r->signup_at) . '</td>';
+        echo '<td>' . esc_html($r->redeemed_at ?: '-') . '</td>';
+        echo '<td>' . esc_html($r->redeemed_ip ?: '-') . '</td>';
+        echo '</tr>';
+      }
+    }
+
+    echo '</tbody></table>';
+
+    if ($pages > 1) {
+      echo '<div class="tablenav" style="margin-top:12px;">';
+      echo '<div class="tablenav-pages">';
+      for ($p = 1; $p <= $pages; $p++) {
+        $u = self::admin_url('mmpp-entries', ['id' => $id, 'paged' => $p, 's' => $search]);
+        $cls = $p === $paged ? 'button button-primary' : 'button';
+        echo '<a class="' . esc_attr($cls) . '" style="margin-right:6px;" href="' . esc_url($u) . '">' . (int) $p . '</a>';
+      }
+      echo '</div></div>';
+    }
+
+    echo '</div>';
   }
 
   public static function page_analytics() {

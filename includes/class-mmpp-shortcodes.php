@@ -20,6 +20,10 @@ class MMPP_Shortcodes {
     $campaign = MMPP_DB::get_campaign_by_slug($slug);
     if (!$campaign) return '<div class="mmpp-box mmpp-error">Campaign not found.</div>';
 
+    if (!MMPP_DB::campaign_is_active($campaign)) {
+      return '<div class="mmpp-box mmpp-error">This promotion is not active right now.</div>';
+    }
+
     $out = '';
 
     if (!empty($_POST['mmpp_signup_submit']) && !empty($_POST['mmpp_campaign']) && hash_equals($slug, (string) $_POST['mmpp_campaign'])) {
@@ -37,11 +41,25 @@ class MMPP_Shortcodes {
         MMPP_Rest::init();
         // Call private method not possible. Rebuild a minimal send here.
         $base = MMPP_DB::get_claim_page_url($campaign);
-        $claim = add_query_arg(['mmpp' => $campaign->slug, 't' => $entry->token], $base);
+        $claim_url = add_query_arg(['mmpp' => $campaign->slug, 't' => $entry->token], $base);
+
         $subject = $campaign->email_subject ?: 'Your free pint claim link';
         $body_tpl = $campaign->email_body ?: "Thanks for signing up.\n\nUse this link to claim your free pint:\n{claim_link}\n";
-        $body = str_replace('{claim_link}', esc_url_raw($claim), $body_tpl);
-        $headers = [];
+        $is_html = isset($campaign->email_is_html) ? ((int) $campaign->email_is_html === 1) : true;
+        $btn_text = !empty($campaign->email_button_text) ? (string) $campaign->email_button_text : 'Open my free pint pass';
+
+        if ($is_html) {
+          $button = '<a href="' . esc_url($claim_url) . '" style="display:inline-block;padding:12px 18px;background:#0b3d2e;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:700;">' . esc_html($btn_text) . '</a>';
+          $fallback = '<p style="margin-top:12px;font-size:12px;color:#666;">If the button does not work, open this link: <a href="' . esc_url($claim_url) . '">' . esc_html($claim_url) . '</a></p>';
+          $body = str_replace('{claim_link}', $button . $fallback, $body_tpl);
+          $body = str_replace('{claim_url}', esc_url($claim_url), $body);
+          $headers = ['Content-Type: text/html; charset=UTF-8'];
+        } else {
+          $body = str_replace('{claim_link}', esc_url_raw($claim_url), $body_tpl);
+          $body = str_replace('{claim_url}', esc_url_raw($claim_url), $body);
+          $headers = [];
+        }
+
         if (!empty($campaign->email_from_email)) {
           $from_name = $campaign->email_from_name ? $campaign->email_from_name : wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES);
           $headers[] = 'From: ' . $from_name . ' <' . $campaign->email_from_email . '>';
@@ -79,9 +97,17 @@ class MMPP_Shortcodes {
     $campaign = MMPP_DB::get_campaign_by_slug($slug);
     if (!$campaign) return '<div class="mmpp-box mmpp-error">Campaign not found.</div>';
 
+    if (!MMPP_DB::campaign_is_active($campaign)) {
+      return '<div class="mmpp-box mmpp-error">This promotion is not active right now.</div>';
+    }
+
     $entry = MMPP_DB::get_entry_by_token($token);
     if (!$entry || (int) $entry->campaign_id !== (int) $campaign->id) {
       return '<div class="mmpp-box mmpp-error">Invalid claim token.</div>';
+    }
+
+    if (!MMPP_DB::campaign_is_active($campaign)) {
+      return '<div class="mmpp-wrap"><div class="mmpp-card mmpp-fail"><h2>Promotion not active</h2><p>This promotion is not active right now.</p></div></div>';
     }
 
     if ((int) $entry->status === 0) {

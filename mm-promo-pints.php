@@ -2,7 +2,7 @@
 /**
  * Plugin Name: MM Promo Pints
  * Description: Campaign-based signup and single-use redemption flow for promotions (email claim link, staff redeem button, optional QR scan).
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: Meridian Media
  * Requires at least: 6.0
  * Requires PHP: 7.4
@@ -10,7 +10,7 @@
 
 if (!defined('ABSPATH')) exit;
 
-define('MMPP_VERSION', '1.0.1');
+define('MMPP_VERSION', '1.0.2');
 define('MMPP_SLUG', 'mm-promo-pints');
 define('MMPP_PATH', plugin_dir_path(__FILE__));
 define('MMPP_URL', plugin_dir_url(__FILE__));
