@@ -1,0 +1,27 @@
+.mmpp-wrap{max-width:520px;margin:20px auto;padding:0 16px;font-family:inherit}
+.mmpp-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px;box-shadow:0 6px 18px rgba(0,0,0,.06)}
+.mmpp-card h2{margin:0 0 10px;font-size:22px;line-height:1.2}
+.mmpp-box{max-width:520px;margin:16px auto;padding:16px;border:1px solid #e5e7eb;border-radius:14px;background:#fff}
+.mmpp-ok{border-color:#86efac}
+.mmpp-error{border-color:#fca5a5}
+.mmpp-form{display:grid;gap:10px}
+.mmpp-form label{font-weight:600}
+.mmpp-form input{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px}
+.mmpp-form button{padding:11px 14px;border:0;border-radius:12px;background:#111827;color:#fff;font-weight:700;cursor:pointer}
+.mmpp-big-warn{padding:10px 12px;border-radius:12px;background:#fff7ed;border:1px solid #fdba74;font-weight:700}
+.mmpp-redeem{width:100%;padding:14px 16px;border:0;border-radius:14px;background:#16a34a;color:#fff;font-size:18px;font-weight:800;cursor:pointer}
+.mmpp-secondary{width:100%;padding:10px 12px;border-radius:12px;border:1px solid #d1d5db;background:#f9fafb;font-weight:700;cursor:pointer}
+.mmpp-pin{margin:12px 0;display:grid;gap:8px}
+.mmpp-pin input{width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px}
+.mmpp-result{margin-top:12px}
+.mmpp-result .mmpp-msg{padding:10px 12px;border-radius:12px;border:1px solid #e5e7eb;background:#f9fafb}
+.mmpp-result .mmpp-msg.ok{border-color:#86efac;background:#f0fdf4}
+.mmpp-result .mmpp-msg.bad{border-color:#fca5a5;background:#fef2f2}
+.mmpp-fail{border-color:#fca5a5}
+.mmpp-qr-block{margin:12px 0;display:grid;gap:10px}
+.mmpp-qr{display:flex;justify-content:center}
+.mmpp-qr img{width:220px;height:220px;border-radius:12px;border:1px solid #e5e7eb;background:#fff}
+.mmpp-scan{margin-top:10px;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;background:#000}
+#mmppVideo{width:100%;height:auto;display:block}
+.mmpp-scan-actions{padding:10px;background:#fff}
+.mmpp-scan-msg{padding:10px;background:#fff}
