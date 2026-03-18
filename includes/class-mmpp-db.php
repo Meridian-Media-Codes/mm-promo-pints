@@ -114,7 +114,6 @@ class MMPP_DB {
     return $wpdb->get_results("SELECT * FROM {$t} ORDER BY created_at DESC");
   }
 
-
   public static function campaign_is_active($campaign, $ts = null) {
     if (!$campaign) return false;
     if ($ts === null) $ts = time();
@@ -307,7 +306,6 @@ class MMPP_DB {
     ];
   }
 
-
   public static function count_entries($campaign_id, $search = '') {
     global $wpdb;
     $t = self::table_entries();
@@ -386,12 +384,12 @@ class MMPP_DB {
     }
     fclose($out);
   }
-}
 
-public static function delete_entry_by_id(int $entry_id): bool {
-  global $wpdb;
-  $table = self::table_entries();
+  public static function delete_entry_by_id(int $entry_id): bool {
+    global $wpdb;
+    $table = self::table_entries();
 
-  $deleted = $wpdb->delete($table, ['id' => $entry_id], ['%d']);
-  return (bool) $deleted;
+    $deleted = $wpdb->delete($table, ['id' => $entry_id], ['%d']);
+    return (bool) $deleted;
+  }
 }
