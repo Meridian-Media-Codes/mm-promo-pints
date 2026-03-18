@@ -6,6 +6,7 @@ class MMPP_Admin {
     add_action('admin_menu', [__CLASS__, 'menu']);
     add_action('admin_post_mmpp_save_campaign', [__CLASS__, 'handle_save_campaign']);
     add_action('admin_post_mmpp_export_csv', [__CLASS__, 'handle_export_csv']);
+    add_action('admin_post_mmpp_delete_entry', [__CLASS__, 'handle_delete_entry']);
   }
 
   public static function menu() {
@@ -48,7 +49,6 @@ class MMPP_Admin {
     if (!$local_dt) return '';
     try {
       $tz = wp_timezone();
-      // datetime-local uses "YYYY-MM-DDTHH:MM"
       $dt = new DateTimeImmutable($local_dt, $tz);
       $gmt = $dt->setTimezone(new DateTimeZone('UTC'));
       return $gmt->format('Y-m-d H:i:s');
@@ -182,7 +182,7 @@ class MMPP_Admin {
     echo '<p class="description">Recommended. Pick the page that contains <code>[mmpp_claim]</code>. This fixes email links pointing at the homepage.</p>';
     echo '</td></tr>';
 
-echo '<tr><th scope="row"><label for="start_at">Start date (optional)</label></th><td>';
+    echo '<tr><th scope="row"><label for="start_at">Start date (optional)</label></th><td>';
     echo '<input type="datetime-local" name="start_at" id="start_at" value="' . esc_attr(self::to_local_dt($data['start_at'])) . '">';
     echo '<p class="description">If set, signups and redemptions only work from this time.</p>';
     echo '</td></tr>';
@@ -313,6 +313,36 @@ echo '<tr><th scope="row"><label for="start_at">Start date (optional)</label></t
     exit;
   }
 
+  public static function handle_delete_entry() {
+    if (!current_user_can('manage_options')) wp_die('No permission');
+
+    $campaign_id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+    $entry_id = isset($_GET['entry_id']) ? (int) $_GET['entry_id'] : 0;
+
+    if (!$campaign_id || !$entry_id) {
+      wp_safe_redirect(admin_url('admin.php?page=mmpp-entries&id=' . (int) $campaign_id));
+      exit;
+    }
+
+    if (!wp_verify_nonce($_GET['_wpnonce'] ?? '', 'mmpp_delete_entry_' . $entry_id)) {
+      wp_die('Bad nonce');
+    }
+
+    global $wpdb;
+    $t = MMPP_DB::table_entries();
+
+    $row = $wpdb->get_row($wpdb->prepare("SELECT id, campaign_id FROM {$t} WHERE id = %d", $entry_id));
+    if (!$row || (int) $row->campaign_id !== $campaign_id) {
+      wp_safe_redirect(admin_url('admin.php?page=mmpp-entries&id=' . (int) $campaign_id . '&delete=notfound'));
+      exit;
+    }
+
+    $deleted = $wpdb->delete($t, ['id' => $entry_id], ['%d']);
+    $flag = $deleted ? 'deleted' : 'failed';
+
+    wp_safe_redirect(admin_url('admin.php?page=mmpp-entries&id=' . (int) $campaign_id . '&delete=' . $flag));
+    exit;
+  }
 
   public static function page_entries() {
     if (!current_user_can('manage_options')) return;
@@ -353,6 +383,17 @@ echo '<tr><th scope="row"><label for="start_at">Start date (optional)</label></t
     echo '<div class="wrap mmpp">';
     echo '<h1>Entries: ' . esc_html($c->name) . '</h1>';
 
+    if (isset($_GET['delete'])) {
+      $d = sanitize_text_field($_GET['delete']);
+      if ($d === 'deleted') {
+        echo '<div class="notice notice-success"><p>Entry deleted.</p></div>';
+      } elseif ($d === 'failed') {
+        echo '<div class="notice notice-error"><p>Could not delete entry. Try again.</p></div>';
+      } elseif ($d === 'notfound') {
+        echo '<div class="notice notice-warning"><p>Entry not found for this campaign.</p></div>';
+      }
+    }
+
     echo '<form method="get" style="margin:12px 0;">';
     echo '<input type="hidden" name="page" value="mmpp-entries">';
     echo '<input type="hidden" name="id" value="' . (int) $id . '">';
@@ -371,8 +412,19 @@ echo '<tr><th scope="row"><label for="start_at">Start date (optional)</label></t
     } else {
       foreach ($rows as $r) {
         $redeemed = ((int) $r->status === 0);
+
+        $del_url = wp_nonce_url(
+          admin_url('admin-post.php?action=mmpp_delete_entry&id=' . (int) $id . '&entry_id=' . (int) $r->id),
+          'mmpp_delete_entry_' . (int) $r->id
+        );
+
         echo '<tr>';
-        echo '<td><code>' . esc_html($r->email) . '</code></td>';
+        echo '<td>';
+        echo '<code>' . esc_html($r->email) . '</code>';
+        echo '<div style="margin-top:6px;">';
+        echo '<a href="' . esc_url($del_url) . '" style="color:#b32d2e;text-decoration:none;" onclick="return confirm(\'Delete this entry?\')">Delete</a>';
+        echo '</div>';
+        echo '</td>';
         echo '<td>' . ($redeemed ? '<span class="mmpp-check">✓</span>' : '—') . '</td>';
         echo '<td>' . esc_html($r->signup_at) . '</td>';
         echo '<td>' . esc_html($r->redeemed_at ?: '-') . '</td>';

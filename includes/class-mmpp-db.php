@@ -387,3 +387,11 @@ class MMPP_DB {
     fclose($out);
   }
 }
+
+public static function delete_entry_by_id(int $entry_id): bool {
+  global $wpdb;
+  $table = self::table_entries();
+
+  $deleted = $wpdb->delete($table, ['id' => $entry_id], ['%d']);
+  return (bool) $deleted;
+}

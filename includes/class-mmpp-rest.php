@@ -88,7 +88,7 @@ class MMPP_Rest {
 
   $site_name = wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES);
 
-  // Logo: custom logo first, then site icon
+  // Logo: campaign setting could be added later, but for now use site logo or site icon.
   $logo_url = '';
   $custom_logo_id = (int) get_theme_mod('custom_logo');
   if ($custom_logo_id) {
@@ -99,78 +99,91 @@ class MMPP_Rest {
     $logo_url = get_site_icon_url(256);
   }
 
-  // Brand colours (safe in email clients)
-  $bg = '#0b2b18';         // deep green
-  $card = '#101214';       // dark card
+  // Brand colours - tweak these to match the site.
+  $bg = '#0b2b18';         // page background
+  $card = '#1c1f22';       // card background
   $text = '#ffffff';
-  $muted = '#cfcfcf';
+  $muted = '#cfd5d3';
+  $subtle = '#9aa7a1';
   $accent = '#caa34a';     // gold accent
-  $button_bg = '#1f6f43';  // green button
+  $button_bg = '#146b3a';  // button green
   $button_text = '#ffffff';
   $border = 'rgba(255,255,255,0.10)';
 
   if ($is_html) {
-    $button =
+    // Build button
+    $button_html =
       '<a href="' . esc_url($claim_url) . '" ' .
-      'style="display:inline-block;padding:14px 18px;background:' . esc_attr($button_bg) . ';color:' . esc_attr($button_text) . ';' .
-      'text-decoration:none;border-radius:10px;font-weight:700;font-size:16px;line-height:16px;">' .
+      'style="display:inline-block;background:' . esc_attr($button_bg) . ';color:' . esc_attr($button_text) . ';' .
+      'text-decoration:none;border-radius:12px;padding:14px 18px;font-weight:800;font-size:16px;letter-spacing:0.2px;">' .
       esc_html($btn_text) .
       '</a>';
 
-    $fallback =
-      '<div style="margin-top:14px;font-size:12px;line-height:18px;color:' . esc_attr($muted) . ';">' .
-      'If the button does not work, open this link:<br>' .
-      '<a href="' . esc_url($claim_url) . '" style="color:#9fe6b8;text-decoration:underline;word-break:break-word;">' .
+    // Fallback link made quiet and compact
+    $fallback_html =
+      '<div style="margin-top:14px;padding-top:12px;border-top:1px solid ' . esc_attr($border) . ';font-size:12px;line-height:18px;color:' . esc_attr($subtle) . ';">' .
+      'Manual link: <a href="' . esc_url($claim_url) . '" style="color:#9fe6b8;text-decoration:underline;word-break:break-word;">' .
       esc_html($claim_url) .
       '</a>' .
       '</div>';
 
+    // Body copy (keep simple formatting)
     $safe_body = wp_kses_post($body_tpl);
     $safe_body = str_replace('{claim_url}', esc_url($claim_url), $safe_body);
-    $safe_body = str_replace('{claim_link}', $button . $fallback, $safe_body);
-    $safe_body = nl2br($safe_body);
+    $safe_body = str_replace('{claim_link}', $button_html . $fallback_html, $safe_body);
 
-    $logo_html = '';
-    if ($logo_url) {
-      $logo_html =
-        '<img src="' . esc_url($logo_url) . '" alt="' . esc_attr($site_name) . '" ' .
-        'style="display:block;max-width:220px;width:100%;height:auto;margin:0 auto;">';
-    } else {
-      $logo_html =
-        '<div style="font-weight:800;font-size:20px;color:' . esc_attr($text) . ';text-align:center;">' .
-        esc_html($site_name) .
-        '</div>';
+    // Convert double newlines to paragraph spacing
+    $parts = preg_split("/\r\n\r\n|\n\n|\r\r/", $safe_body);
+    $body_html = '';
+    foreach ($parts as $p) {
+      $p = trim($p);
+      if ($p === '') continue;
+      $body_html .= '<p style="margin:0 0 14px 0;font-size:14px;line-height:22px;color:' . esc_attr($muted) . ';">' . nl2br($p) . '</p>';
     }
 
+    // Header block (logo + title)
+    $logo_block = '';
+    if ($logo_url) {
+      $logo_block =
+        '<img src="' . esc_url($logo_url) . '" alt="' . esc_attr($site_name) . '" width="160" ' .
+        'style="display:block;margin:0 auto 10px auto;max-width:160px;height:auto;border:0;outline:none;text-decoration:none;">';
+    }
+
+    $title = !empty($campaign->email_title) ? (string) $campaign->email_title : $site_name;
+    $kicker = !empty($campaign->email_kicker) ? (string) $campaign->email_kicker : 'Free pint pass';
+
+    // Full email HTML
     $html =
-      '<!doctype html><html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>' .
+      '<!doctype html><html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">' .
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0"></head>' .
       '<body style="margin:0;padding:0;background:' . esc_attr($bg) . ';font-family:Arial,Helvetica,sans-serif;">' .
 
-      '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:' . esc_attr($bg) . ';padding:28px 12px;">' .
+      '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:' . esc_attr($bg) . ';padding:24px 12px;">' .
         '<tr><td align="center">' .
 
-          '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="width:640px;max-width:640px;">' .
+          '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="620" style="width:620px;max-width:620px;">' .
 
-            '<tr><td style="padding:0 0 14px 0;text-align:center;">' . $logo_html . '</td></tr>' .
-
-            '<tr><td style="background:' . esc_attr($card) . ';border:1px solid ' . esc_attr($border) . ';border-radius:16px;overflow:hidden;">' .
-
-              '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' .
-                '<tr>' .
-                  '<td style="padding:14px 18px;background:rgba(255,255,255,0.03);border-bottom:1px solid ' . esc_attr($border) . ';">' .
-                    '<div style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:' . esc_attr($accent) . ';font-weight:800;">Free pint pass</div>' .
-                  '</td>' .
-                '</tr>' .
-                '<tr>' .
-                  '<td style="padding:22px 18px;color:' . esc_attr($text) . ';">' .
-                    '<div style="font-size:14px;line-height:22px;color:' . esc_attr($muted) . ';">' . $safe_body . '</div>' .
-                  '</td>' .
-                '</tr>' .
-              '</table>' .
-
+            // Header
+            '<tr><td style="padding:0 0 14px 0;text-align:center;">' .
+              '<div style="background:rgba(255,255,255,0.06);border:1px solid ' . esc_attr($border) . ';border-radius:16px;padding:18px 16px;">' .
+                $logo_block .
+                '<div style="font-size:18px;font-weight:900;color:' . esc_attr($text) . ';margin:0;">' . esc_html($title) . '</div>' .
+                '<div style="margin-top:6px;font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:' . esc_attr($accent) . ';font-weight:900;">' . esc_html($kicker) . '</div>' .
+              '</div>' .
             '</td></tr>' .
 
-            '<tr><td style="padding:12px 6px 0 6px;text-align:center;color:' . esc_attr($muted) . ';font-size:12px;line-height:18px;">' .
+            // Main card
+            '<tr><td style="background:' . esc_attr($card) . ';border:1px solid ' . esc_attr($border) . ';border-radius:16px;overflow:hidden;">' .
+              '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' .
+                '<tr><td style="padding:22px 18px;">' .
+                  $body_html .
+                  '<div style="margin-top:6px;"></div>' .
+                '</td></tr>' .
+              '</table>' .
+            '</td></tr>' .
+
+            // Footer
+            '<tr><td style="padding:14px 6px 0 6px;text-align:center;color:' . esc_attr($subtle) . ';font-size:12px;line-height:18px;">' .
               esc_html($site_name) . ' automated email' .
             '</td></tr>' .
 
