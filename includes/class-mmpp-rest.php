@@ -70,51 +70,140 @@ class MMPP_Rest {
   }
 
   private static function send_claim_email($campaign, $entry) {
-    $base = MMPP_DB::get_claim_page_url($campaign);
-    $claim_url = add_query_arg([
-      'mmpp' => $campaign->slug,
-      't' => $entry->token,
-    ], $base);
+  $base = MMPP_DB::get_claim_page_url($campaign);
+  $claim_url = add_query_arg([
+    'mmpp' => $campaign->slug,
+    't' => $entry->token,
+  ], $base);
 
-    $subject = $campaign->email_subject ?: 'Your free pint claim link';
+  $subject = $campaign->email_subject ?: 'Your free pint claim link';
 
-    $body_tpl = $campaign->email_body;
-    if (!$body_tpl) {
-      $body_tpl = "Thanks for signing up.\n\nUse this link to claim your free pint:\n{claim_link}\n";
-    }
+  $body_tpl = $campaign->email_body;
+  if (!$body_tpl) {
+    $body_tpl = "Thanks for signing up.\n\nShow this screen at the bar on opening day to claim your free pint.\n\n{claim_link}";
+  }
 
-    $is_html = isset($campaign->email_is_html) ? ((int) $campaign->email_is_html === 1) : true;
-    $btn_text = !empty($campaign->email_button_text) ? (string) $campaign->email_button_text : 'Open my free pint pass';
+  $is_html = isset($campaign->email_is_html) ? ((int) $campaign->email_is_html === 1) : true;
+  $btn_text = !empty($campaign->email_button_text) ? (string) $campaign->email_button_text : 'Open my free pint pass';
 
-    if ($is_html) {
-      $button =
-        '<a href="' . esc_url($claim_url) . '" ' .
-        'style="display:inline-block;padding:12px 18px;background:#0b3d2e;color:#ffffff;text-decoration:none;border-radius:10px;font-weight:700;">' .
-        esc_html($btn_text) .
-        '</a>';
+  $site_name = wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES);
 
-      $fallback =
-        '<p style="margin-top:12px;font-size:12px;color:#666;">If the button does not work, open this link: ' .
-        '<a href="' . esc_url($claim_url) . '">' . esc_html($claim_url) . '</a>' .
-        '</p>';
+  // Logo: custom logo first, then site icon
+  $logo_url = '';
+  $custom_logo_id = (int) get_theme_mod('custom_logo');
+  if ($custom_logo_id) {
+    $logo_src = wp_get_attachment_image_src($custom_logo_id, 'full');
+    if (!empty($logo_src[0])) $logo_url = $logo_src[0];
+  }
+  if (!$logo_url) {
+    $logo_url = get_site_icon_url(256);
+  }
 
-      $body = str_replace('{claim_link}', $button . $fallback, $body_tpl);
-      $body = str_replace('{claim_url}', esc_url($claim_url), $body);
+  // Brand colours (safe in email clients)
+  $bg = '#0b2b18';         // deep green
+  $card = '#101214';       // dark card
+  $text = '#ffffff';
+  $muted = '#cfcfcf';
+  $accent = '#caa34a';     // gold accent
+  $button_bg = '#1f6f43';  // green button
+  $button_text = '#ffffff';
+  $border = 'rgba(255,255,255,0.10)';
 
-      $headers = ['Content-Type: text/html; charset=UTF-8'];
+  if ($is_html) {
+    $button =
+      '<a href="' . esc_url($claim_url) . '" ' .
+      'style="display:inline-block;padding:14px 18px;background:' . esc_attr($button_bg) . ';color:' . esc_attr($button_text) . ';' .
+      'text-decoration:none;border-radius:10px;font-weight:700;font-size:16px;line-height:16px;">' .
+      esc_html($btn_text) .
+      '</a>';
+
+    $fallback =
+      '<div style="margin-top:14px;font-size:12px;line-height:18px;color:' . esc_attr($muted) . ';">' .
+      'If the button does not work, open this link:<br>' .
+      '<a href="' . esc_url($claim_url) . '" style="color:#9fe6b8;text-decoration:underline;word-break:break-word;">' .
+      esc_html($claim_url) .
+      '</a>' .
+      '</div>';
+
+    $safe_body = wp_kses_post($body_tpl);
+    $safe_body = str_replace('{claim_url}', esc_url($claim_url), $safe_body);
+    $safe_body = str_replace('{claim_link}', $button . $fallback, $safe_body);
+    $safe_body = nl2br($safe_body);
+
+    $logo_html = '';
+    if ($logo_url) {
+      $logo_html =
+        '<img src="' . esc_url($logo_url) . '" alt="' . esc_attr($site_name) . '" ' .
+        'style="display:block;max-width:220px;width:100%;height:auto;margin:0 auto;">';
     } else {
-      $body = str_replace('{claim_link}', esc_url_raw($claim_url), $body_tpl);
-      $body = str_replace('{claim_url}', esc_url_raw($claim_url), $body);
-      $headers = [];
+      $logo_html =
+        '<div style="font-weight:800;font-size:20px;color:' . esc_attr($text) . ';text-align:center;">' .
+        esc_html($site_name) .
+        '</div>';
     }
+
+    $html =
+      '<!doctype html><html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"></head>' .
+      '<body style="margin:0;padding:0;background:' . esc_attr($bg) . ';font-family:Arial,Helvetica,sans-serif;">' .
+
+      '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:' . esc_attr($bg) . ';padding:28px 12px;">' .
+        '<tr><td align="center">' .
+
+          '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="width:640px;max-width:640px;">' .
+
+            '<tr><td style="padding:0 0 14px 0;text-align:center;">' . $logo_html . '</td></tr>' .
+
+            '<tr><td style="background:' . esc_attr($card) . ';border:1px solid ' . esc_attr($border) . ';border-radius:16px;overflow:hidden;">' .
+
+              '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">' .
+                '<tr>' .
+                  '<td style="padding:14px 18px;background:rgba(255,255,255,0.03);border-bottom:1px solid ' . esc_attr($border) . ';">' .
+                    '<div style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;color:' . esc_attr($accent) . ';font-weight:800;">Free pint pass</div>' .
+                  '</td>' .
+                '</tr>' .
+                '<tr>' .
+                  '<td style="padding:22px 18px;color:' . esc_attr($text) . ';">' .
+                    '<div style="font-size:14px;line-height:22px;color:' . esc_attr($muted) . ';">' . $safe_body . '</div>' .
+                  '</td>' .
+                '</tr>' .
+              '</table>' .
+
+            '</td></tr>' .
+
+            '<tr><td style="padding:12px 6px 0 6px;text-align:center;color:' . esc_attr($muted) . ';font-size:12px;line-height:18px;">' .
+              esc_html($site_name) . ' automated email' .
+            '</td></tr>' .
+
+          '</table>' .
+
+        '</td></tr>' .
+      '</table>' .
+
+      '</body></html>';
+
+    $headers = ['Content-Type: text/html; charset=UTF-8'];
 
     if (!empty($campaign->email_from_email)) {
-      $from_name = $campaign->email_from_name ? $campaign->email_from_name : wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES);
+      $from_name = $campaign->email_from_name ? $campaign->email_from_name : $site_name;
       $headers[] = 'From: ' . $from_name . ' <' . $campaign->email_from_email . '>';
     }
 
-    wp_mail($entry->email, $subject, $body, $headers);
+    wp_mail($entry->email, $subject, $html, $headers);
+    return;
   }
+
+  // Plain text fallback
+  $body = str_replace('{claim_link}', esc_url_raw($claim_url), $body_tpl);
+  $body = str_replace('{claim_url}', esc_url_raw($claim_url), $body);
+
+  $headers = [];
+  if (!empty($campaign->email_from_email)) {
+    $from_name = $campaign->email_from_name ? $campaign->email_from_name : $site_name;
+    $headers[] = 'From: ' . $from_name . ' <' . $campaign->email_from_email . '>';
+  }
+
+  wp_mail($entry->email, $subject, $body, $headers);
+}
 
   public static function redeem(WP_REST_Request $req) {
     // IMPORTANT: we must load the campaign first (via the entry token) before checking active dates.
